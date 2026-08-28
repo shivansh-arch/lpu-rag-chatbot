@@ -1,5 +1,5 @@
-.env
-*.env
+action_gateway/playwright_profile/
 __pycache__/
+*.pyc
 venv/
-vector_store/
+.env
