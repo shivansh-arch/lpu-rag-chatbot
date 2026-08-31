@@ -26,16 +26,9 @@ REASON_ID = "ctl00_cphHeading_txtLeaveReason"
 # ============================================================
 
 def wait_for_async_postback(page: Page):
-    """
-    Wait for an ASP.NET UpdatePanel-style AJAX postback to finish.
-
-    If the page does not use ASP.NET AJAX, this simply returns.
-    """
-
     page.wait_for_function(
         """
         () => {
-            // ASP.NET AJAX is not present.
             if (
                 !window.Sys ||
                 !Sys.WebForms ||
@@ -43,10 +36,7 @@ def wait_for_async_postback(page: Page):
             ) {
                 return true;
             }
-
-            const manager =
-                Sys.WebForms.PageRequestManager.getInstance();
-
+            const manager = Sys.WebForms.PageRequestManager.getInstance();
             return !manager.get_isInAsyncPostBack();
         }
         """,
@@ -72,42 +62,22 @@ def set_telerik_datetime(page, picker_id, value):
 
     page.add_script_tag(content=script)
 
+
 # ============================================================
 # READ TELERIK DATE/TIME
 # ============================================================
 
-def get_telerik_datetime(
-    page: Page,
-    picker_id: str,
-):
-    """
-    Read the actual selected date from Telerik.
-
-    Returns an ISO-like datetime string or None.
-    """
-
+def get_telerik_datetime(page: Page, picker_id: str):
     return page.evaluate(
         """
         (pickerId) => {
-
             const picker = $find(pickerId);
-
             if (!picker) {
-                throw new Error(
-                    `RadDateTimePicker not found: ${pickerId}`
-                );
+                throw new Error(`RadDateTimePicker not found: ${pickerId}`);
             }
-
             const date = picker.get_selectedDate();
-
-            if (!date) {
-                return null;
-            }
-
-            return {
-                timestamp: date.getTime(),
-                iso: date.toISOString()
-            };
+            if (!date) { return null; }
+            return { timestamp: date.getTime(), iso: date.toISOString() };
         }
         """,
         picker_id,
@@ -118,41 +88,20 @@ def get_telerik_datetime(
 # VERIFY DROPDOWN
 # ============================================================
 
-def verify_select(
-    page: Page,
-    element_id: str,
-    expected_label: str,
-):
-    """
-    Verify the currently selected <option>.
-    """
-
-    result = page.locator(
-        f"#{element_id}"
-    ).evaluate(
+def verify_select(page: Page, element_id: str, expected_label: str):
+    result = page.locator(f"#{element_id}").evaluate(
         """
         (select) => {
-
-            const option =
-                select.options[select.selectedIndex];
-
-            return {
-                value: select.value,
-                label: option ? option.textContent.trim() : ""
-            };
+            const option = select.options[select.selectedIndex];
+            return { value: select.value, label: option ? option.textContent.trim() : "" };
         }
         """
     )
-
     actual_label = result["label"]
-
     if actual_label != expected_label:
         raise AssertionError(
-            f"{element_id} mismatch: "
-            f"expected {expected_label!r}, "
-            f"got {actual_label!r}"
+            f"{element_id} mismatch: expected {expected_label!r}, got {actual_label!r}"
         )
-
     return actual_label
 
 
@@ -160,60 +109,19 @@ def verify_select(
 # VERIFY TELERIK DATE
 # ============================================================
 
-def verify_telerik_datetime(
-    page: Page,
-    picker_id: str,
-    expected: datetime,
-):
-    """
-    Compare Telerik's actual selected date/time
-    against the datetime we intended to set.
-    """
-
-    actual = get_telerik_datetime(
-        page,
-        picker_id,
-    )
-
+def verify_telerik_datetime(page: Page, picker_id: str, expected: datetime):
+    actual = get_telerik_datetime(page, picker_id)
     if actual is None:
-        raise AssertionError(
-            f"{picker_id}: Telerik has no selected date"
-        )
-
-    expected_timestamp = int(
-        expected.timestamp() * 1000
-    )
+        raise AssertionError(f"{picker_id}: Telerik has no selected date")
 
     actual_timestamp = actual["timestamp"]
+    actual_dt = datetime.fromtimestamp(actual_timestamp / 1000)
 
-    # Compare to the minute rather than requiring
-    # millisecond-level equality.
-    actual_dt = datetime.fromtimestamp(
-        actual_timestamp / 1000
-    )
-
-    actual_key = (
-        actual_dt.year,
-        actual_dt.month,
-        actual_dt.day,
-        actual_dt.hour,
-        actual_dt.minute,
-    )
-
-    expected_key = (
-        expected.year,
-        expected.month,
-        expected.day,
-        expected.hour,
-        expected.minute,
-    )
+    actual_key = (actual_dt.year, actual_dt.month, actual_dt.day, actual_dt.hour, actual_dt.minute)
+    expected_key = (expected.year, expected.month, expected.day, expected.hour, expected.minute)
 
     if actual_key != expected_key:
-        raise AssertionError(
-            f"{picker_id} mismatch: "
-            f"expected {expected}, "
-            f"got {actual_dt}"
-        )
+        raise AssertionError(f"{picker_id} mismatch: expected {expected}, got {actual_dt}")
 
     return actual_dt
 
@@ -231,107 +139,27 @@ def verify_hostel_leave_form(
     reason: str,
     relative_mobile: str,
 ):
-    """
-    Read the LIVE page state and verify it against
-    the values we intended to enter.
-    """
+    actual_leave_type = verify_select(page, LEAVE_TYPE_ID, leave_type)
+    actual_visit_place = verify_select(page, VISIT_PLACE_ID, visit_place)
 
-    # --------------------------------------------------------
-    # Leave Type
-    # --------------------------------------------------------
-
-    actual_leave_type = verify_select(
-        page,
-        LEAVE_TYPE_ID,
-        leave_type,
-    )
-
-    # --------------------------------------------------------
-    # Visit Place
-    # --------------------------------------------------------
-
-    actual_visit_place = verify_select(
-        page,
-        VISIT_PLACE_ID,
-        visit_place,
-    )
-
-    # --------------------------------------------------------
-    # Relative Mobile
-    # --------------------------------------------------------
-
-    actual_mobile = page.locator(
-        f"#{RELATIVE_MOBILE_ID}"
-    ).input_value()
-
+    actual_mobile = page.locator(f"#{RELATIVE_MOBILE_ID}").input_value()
     if actual_mobile != relative_mobile:
-        raise AssertionError(
-            f"Relative mobile mismatch: "
-            f"expected {relative_mobile!r}, "
-            f"got {actual_mobile!r}"
-        )
+        raise AssertionError(f"Relative mobile mismatch: expected {relative_mobile!r}, got {actual_mobile!r}")
 
-    # --------------------------------------------------------
-    # Reason
-    # --------------------------------------------------------
-
-    actual_reason = page.locator(
-        f"#{REASON_ID}"
-    ).input_value()
-
+    actual_reason = page.locator(f"#{REASON_ID}").input_value()
     if actual_reason != reason:
-        raise AssertionError(
-            f"Reason mismatch: "
-            f"expected {reason!r}, "
-            f"got {actual_reason!r}"
-        )
+        raise AssertionError(f"Reason mismatch: expected {reason!r}, got {actual_reason!r}")
 
-    # --------------------------------------------------------
-    # Start Date/Time
-    # --------------------------------------------------------
+    actual_start = verify_telerik_datetime(page, START_PICKER_ID, start_datetime)
+    actual_end = verify_telerik_datetime(page, END_PICKER_ID, end_datetime)
 
-    actual_start = verify_telerik_datetime(
-        page,
-        START_PICKER_ID,
-        start_datetime,
-    )
-
-    # --------------------------------------------------------
-    # End Date/Time
-    # --------------------------------------------------------
-
-    actual_end = verify_telerik_datetime(
-        page,
-        END_PICKER_ID,
-        end_datetime,
-    )
-
-    # --------------------------------------------------------
-    # Acknowledgement
-    # --------------------------------------------------------
-
-    acknowledgement_row = page.locator(
-        "tr",
-        has_text="By submitting this hostel leave application"
-    )
-
-    checkbox = acknowledgement_row.locator(
-        'input[type="checkbox"]'
-    )
+    acknowledgement_row = page.locator("tr", has_text="By submitting this hostel leave application")
+    checkbox = acknowledgement_row.locator('input[type="checkbox"]')
 
     if checkbox.count() != 1:
-        raise AssertionError(
-            "Could not uniquely locate acknowledgement checkbox"
-        )
-
+        raise AssertionError("Could not uniquely locate acknowledgement checkbox")
     if not checkbox.is_checked():
-        raise AssertionError(
-            "Acknowledgement checkbox is NOT checked"
-        )
-
-    # --------------------------------------------------------
-    # REAL verification output
-    # --------------------------------------------------------
+        raise AssertionError("Acknowledgement checkbox is NOT checked")
 
     print("\n========== FORM VERIFICATION ==========")
     print(f"Leave Type      : {actual_leave_type}")
@@ -359,108 +187,60 @@ def fill_hostel_leave_form(
     reason: str,
     relative_mobile: str,
 ):
-    """
-    Fill the hostel leave form.
-
-    IMPORTANT:
-    This function NEVER submits the application.
-    """
-
-    # --------------------------------------------------------
-    # Validate input
-    # --------------------------------------------------------
-
     if end_datetime <= start_datetime:
-        raise ValueError(
-            "End datetime must be later than start datetime."
-        )
+        raise ValueError("End datetime must be later than start datetime.")
 
     # --------------------------------------------------------
     # Leave Type
     # --------------------------------------------------------
 
-    page.locator(
-        f"#{LEAVE_TYPE_ID}"
-    ).select_option(
-        label=leave_type
-    )
-
-    # Give the ASP.NET postback time to begin/finish
-    # if it is an AJAX UpdatePanel request.
+    page.locator(f"#{LEAVE_TYPE_ID}").select_option(label=leave_type)
     wait_for_async_postback(page)
 
     # --------------------------------------------------------
     # Visit Place
     # --------------------------------------------------------
 
-    page.locator(
-        f"#{VISIT_PLACE_ID}"
-    ).select_option(
-        label=visit_place
-    )
-
+    page.locator(f"#{VISIT_PLACE_ID}").select_option(label=visit_place)
     wait_for_async_postback(page)
 
     # --------------------------------------------------------
     # Relative Mobile
     # --------------------------------------------------------
 
-    page.locator(
-        f"#{RELATIVE_MOBILE_ID}"
-    ).fill(relative_mobile)
+    page.locator(f"#{RELATIVE_MOBILE_ID}").fill(relative_mobile)
 
     # --------------------------------------------------------
     # Start Date/Time
     # --------------------------------------------------------
 
-    set_telerik_datetime(
-        page,
-        START_PICKER_ID,
-        start_datetime,
-    )
+    set_telerik_datetime(page, START_PICKER_ID, start_datetime)
+    wait_for_async_postback(page)
 
     # --------------------------------------------------------
     # End Date/Time
     # --------------------------------------------------------
 
-    set_telerik_datetime(
-        page,
-        END_PICKER_ID,
-        end_datetime,
-    )
+    set_telerik_datetime(page, END_PICKER_ID, end_datetime)
+    wait_for_async_postback(page)          # <-- THE FIX
 
     # --------------------------------------------------------
     # Reason
     # --------------------------------------------------------
 
-    page.locator(
-        f"#{REASON_ID}"
-    ).fill(reason)
+    page.locator(f"#{REASON_ID}").fill(reason)
 
     # --------------------------------------------------------
     # Acknowledgement checkbox
     # --------------------------------------------------------
 
-    acknowledgement_row = page.locator(
-        "tr",
-        has_text="By submitting this hostel leave application"
-    )
-
-    checkbox = acknowledgement_row.locator(
-        'input[type="checkbox"]'
-    )
+    acknowledgement_row = page.locator("tr", has_text="By submitting this hostel leave application")
+    checkbox = acknowledgement_row.locator('input[type="checkbox"]')
 
     if checkbox.count() != 1:
-        raise RuntimeError(
-            "Could not uniquely locate acknowledgement checkbox."
-        )
-
+        raise RuntimeError("Could not uniquely locate acknowledgement checkbox.")
     if not checkbox.is_checked():
         checkbox.check()
-
-    # --------------------------------------------------------
-    # ACTUAL READBACK VERIFICATION
-    # --------------------------------------------------------
 
     verify_hostel_leave_form(
         page=page,
@@ -481,12 +261,6 @@ def fill_hostel_leave_form(
 # ============================================================
 
 def submit_hostel_leave_form(page: Page):
-    """
-    Explicit submit operation.
-
-    This is intentionally separate from filling.
-    """
-
     submit_button = page.locator(
         'input[type="submit"][value="Submit"], '
         'input[type="button"][value="Submit"], '
@@ -494,8 +268,6 @@ def submit_hostel_leave_form(page: Page):
     ).first
 
     if not submit_button.is_visible():
-        raise RuntimeError(
-            "Submit button not found."
-        )
+        raise RuntimeError("Submit button not found.")
 
     submit_button.click()
